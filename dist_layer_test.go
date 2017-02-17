@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/unixpickle/anydiff"
+	"github.com/unixpickle/anydiff/anydifftest"
 	"github.com/unixpickle/anyvec/anyvec64"
 )
 
@@ -43,4 +44,41 @@ func TestDistLayerOut(t *testing.T) {
 			t.Errorf("output %d: expected %f but got %f", i, x, a)
 		}
 	}
+}
+
+func TestDistLayerProp(t *testing.T) {
+	layer := &DistLayer{
+		InputWidth:   3,
+		InputHeight:  3,
+		InputDepth:   2,
+		FilterWidth:  2,
+		FilterHeight: 2,
+		FilterCount:  2,
+		StrideX:      1,
+		StrideY:      1,
+		Filters: anydiff.NewVar(anyvec64.MakeVectorData([]float64{
+			// First filter
+			1, 2, 3, 4,
+			5, 6, 7, 8,
+			// Second filter
+			-1, -2, -3, -4,
+			5, -6, 7, -8,
+		})),
+	}
+	input := anydiff.NewVar(anyvec64.MakeVectorData([]float64{
+		3, 2, 1, 2, 3, 2,
+		3, 6, 1, 3, 5, -2,
+		-3, 2, 0, 2, 4, 2,
+
+		1, 2, 1, 2, 1, 2,
+		3, 6, -1, 3, -1, -2,
+		-3, 2, 1, -1, -4, -2,
+	}))
+	checker := anydifftest.ResChecker{
+		F: func() anydiff.Res {
+			return layer.Apply(input, 2)
+		},
+		V: []*anydiff.Var{input, layer.Filters},
+	}
+	checker.FullCheck(t)
 }

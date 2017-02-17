@@ -25,11 +25,32 @@ type DistLayer struct {
 	im2row *anyconv.Im2Row
 }
 
+// OutputWidth returns the width of the output tensor.
+func (d *DistLayer) OutputWidth() int {
+	d.initIm2Row()
+	return d.im2row.NumX()
+}
+
+// OutputWidth returns the height of the output tensor.
+func (d *DistLayer) OutputHeight() int {
+	d.initIm2Row()
+	return d.im2row.NumY()
+}
+
+// OutputDepth returns the depth of the output tensor.
+func (d *DistLayer) OutputDepth() int {
+	d.initIm2Row()
+	return d.FilterCount
+}
+
 // Apply applies the layer to a batch of input tensors.
 func (d *DistLayer) Apply(in anydiff.Res, n int) anydiff.Res {
-	if d.im2row == nil {
-		d.initIm2Row()
+	d.initIm2Row()
+
+	if d.im2row.InputSize()*n != in.Output().Len() {
+		panic("invalid input length")
 	}
+
 	c := in.Output().Creator()
 
 	var outputs []anyvec.Vector
@@ -46,11 +67,7 @@ func (d *DistLayer) Apply(in anydiff.Res, n int) anydiff.Res {
 		filterSq.Mul(d.Filters.Output().Copy())
 		filterSqSum := anyvec.SumCols(filterSq, d.FilterCount)
 
-		filterMat := &anyvec.Matrix{
-			Data: d.Filters.Vector,
-			Rows: d.FilterCount,
-			Cols: d.Filters.Vector.Len() / d.FilterCount,
-		}
+		filterMat := d.filterMat()
 
 		product := &anyvec.Matrix{
 			Data: c.MakeVector(m.Rows * d.FilterCount),
@@ -75,6 +92,9 @@ func (d *DistLayer) Apply(in anydiff.Res, n int) anydiff.Res {
 }
 
 func (d *DistLayer) initIm2Row() {
+	if d.im2row != nil {
+		return
+	}
 	d.im2row = &anyconv.Im2Row{
 		InputWidth:   d.InputWidth,
 		InputHeight:  d.InputHeight,
@@ -83,6 +103,14 @@ func (d *DistLayer) initIm2Row() {
 		WindowHeight: d.FilterHeight,
 		StrideX:      d.StrideX,
 		StrideY:      d.StrideY,
+	}
+}
+
+func (d *DistLayer) filterMat() *anyvec.Matrix {
+	return &anyvec.Matrix{
+		Data: d.Filters.Vector,
+		Rows: d.FilterCount,
+		Cols: d.Filters.Vector.Len() / d.FilterCount,
 	}
 }
 
@@ -102,5 +130,45 @@ func (d *distLayerRes) Vars() anydiff.VarSet {
 }
 
 func (d *distLayerRes) Propagate(u anyvec.Vector, g anydiff.Grad) {
-	// TODO: this.
+	c := u.Creator()
+	inSize := d.Layer.im2row.InputSize()
+	n := d.In.Output().Len() / inSize
+	uChunkSize := u.Len() / n
+	inIsVariable := g.Intersects(d.In.Vars())
+
+	var downstream []anyvec.Vector
+	d.Layer.im2row.MapAll(d.In.Output(), func(idx int, m *anyvec.Matrix) {
+		uSlice := u.Slice(idx*uChunkSize, (idx+1)*uChunkSize)
+		uMat := &anyvec.Matrix{
+			Data: uSlice,
+			Rows: d.Layer.OutputWidth() * d.Layer.OutputHeight(),
+			Cols: d.Layer.OutputDepth(),
+		}
+
+		if filterGrad, ok := g[d.Layer.Filters]; ok {
+			repeatedSum := anyvec.SumRows(uSlice, d.Layer.FilterCount)
+			uGrad := d.Layer.Filters.Vector.Copy()
+			anyvec.ScaleChunks(uGrad, repeatedSum)
+			uGrad.Scale(c.MakeNumeric(2))
+			filterGrad.Add(uGrad)
+
+			filterMat := d.Layer.filterMat()
+			filterMat.Data = filterGrad
+			filterMat.Product(true, false, c.MakeNumeric(-2), uMat, m, c.MakeNumeric(1))
+		}
+
+		if inIsVariable {
+			inUp := c.MakeVector(inSize)
+			uSum := anyvec.SumCols(uSlice, uSlice.Len()/d.Layer.FilterCount)
+			anyvec.ScaleChunks(m.Data, uSum)
+			m.Product(false, false, c.MakeNumeric(-2), uMat, d.Layer.filterMat(),
+				c.MakeNumeric(2))
+			d.Layer.im2row.Mapper(c).MapTranspose(m.Data, inUp)
+			downstream = append(downstream, inUp)
+		}
+	})
+
+	if inIsVariable {
+		d.In.Propagate(c.Concat(downstream...), g)
+	}
 }
