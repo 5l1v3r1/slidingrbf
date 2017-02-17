@@ -15,13 +15,13 @@ func init() {
 	serializer.RegisterTypedDeserializer(r.SerializerType(), deserializeRBFOutLayer)
 }
 
-// NewRBFLayer creates a full sliding-window radial basis
+// NewLayer creates a full sliding-window radial basis
 // function layer for the given input dimensions.
 // The layer is initialized under the assumption that the
 // inputs are statistically normalized.
-func NewRBFLayer(c anyvec.Creator, inWidth, inHeight, inDepth, filterX, filterY, filterCount,
+func NewLayer(c anyvec.Creator, inWidth, inHeight, inDepth, filterX, filterY, filterCount,
 	strideX, strideY int) anynet.Layer {
-	filters := c.MakeVector(filterX * filterY * inDepth)
+	filters := c.MakeVector(filterX * filterY * filterCount * inDepth)
 	anyvec.Rand(filters, anyvec.Normal, nil)
 	distLayer := &DistLayer{
 		InputWidth:   inWidth,
@@ -36,7 +36,7 @@ func NewRBFLayer(c anyvec.Creator, inWidth, inHeight, inDepth, filterX, filterY,
 	}
 	scale := math.Sqrt(float64(filterX*filterY*inDepth) * 2)
 	scaleVec := c.MakeVector(filterCount)
-	scaleVec.Scale(c.MakeNumeric(scale))
+	scaleVec.AddScaler(c.MakeNumeric(scale))
 	out := &rbfOutLayer{
 		Scalers: anydiff.NewVar(scaleVec),
 	}
