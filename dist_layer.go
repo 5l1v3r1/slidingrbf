@@ -91,6 +91,11 @@ func (d *DistLayer) Apply(in anydiff.Res, n int) anydiff.Res {
 	}
 }
 
+// Parameters returns the layer parameters.
+func (d *DistLayer) Parameters() []*anydiff.Var {
+	return []*anydiff.Var{d.Filters}
+}
+
 func (d *DistLayer) initIm2Row() {
 	if d.im2row != nil {
 		return

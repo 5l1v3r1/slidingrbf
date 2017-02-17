@@ -64,6 +64,10 @@ func (r *rbfOutLayer) Apply(in anydiff.Res, n int) anydiff.Res {
 	return anydiff.Exp(anydiff.ScaleRepeated(in, sq))
 }
 
+func (r *rbfOutLayer) Parameters() []*anydiff.Var {
+	return []*anydiff.Var{r.Scalers}
+}
+
 func (r *rbfOutLayer) SerializerType() string {
 	return "github.com/unixpickle/slidingrbf.rbfOutLayer"
 }
