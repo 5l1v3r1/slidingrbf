@@ -4,7 +4,14 @@ import (
 	"github.com/unixpickle/anydiff"
 	"github.com/unixpickle/anynet/anyconv"
 	"github.com/unixpickle/anyvec"
+	"github.com/unixpickle/anyvec/anyvecsave"
+	"github.com/unixpickle/serializer"
 )
+
+func init() {
+	var d DistLayer
+	serializer.RegisterTypedDeserializer(d.SerializerType(), DeserializeDistLayer)
+}
 
 // DistLayer computes square distances between the filters
 // and their corresponding regions.
@@ -23,6 +30,27 @@ type DistLayer struct {
 	Filters *anydiff.Var
 
 	im2row *anyconv.Im2Row
+}
+
+// DeserializeDistLayer deserializes a DistLayer.
+func DeserializeDistLayer(d []byte) (*DistLayer, error) {
+	var filters *anyvecsave.S
+	var inW, inH, inD, fW, fH, fC, sX, sY serializer.Int
+	err := serializer.DeserializeAny(d, &inW, &inH, &inD, &fW, &fH, &fC, &sX, &sY, &filters)
+	if err != nil {
+		return nil, err
+	}
+	return &DistLayer{
+		InputWidth:   int(inW),
+		InputHeight:  int(inH),
+		InputDepth:   int(inD),
+		FilterWidth:  int(fW),
+		FilterHeight: int(fH),
+		FilterCount:  int(fC),
+		StrideX:      int(sX),
+		StrideY:      int(sY),
+		Filters:      anydiff.NewVar(filters.Vector),
+	}, nil
 }
 
 // OutputWidth returns the width of the output tensor.
@@ -94,6 +122,27 @@ func (d *DistLayer) Apply(in anydiff.Res, n int) anydiff.Res {
 // Parameters returns the layer parameters.
 func (d *DistLayer) Parameters() []*anydiff.Var {
 	return []*anydiff.Var{d.Filters}
+}
+
+// SerializerType returns the unique ID used to serialize
+// a DistLayer with the serializer package.
+func (d *DistLayer) SerializerType() string {
+	return "github.com/unixpickle/slidingrbf.DistLayer"
+}
+
+// Serialize serializes the layer.
+func (d *DistLayer) Serialize() ([]byte, error) {
+	return serializer.SerializeAny(
+		serializer.Int(d.InputWidth),
+		serializer.Int(d.InputHeight),
+		serializer.Int(d.InputDepth),
+		serializer.Int(d.FilterWidth),
+		serializer.Int(d.FilterHeight),
+		serializer.Int(d.FilterCount),
+		serializer.Int(d.StrideX),
+		serializer.Int(d.StrideY),
+		&anyvecsave.S{Vector: d.Filters.Vector},
+	)
 }
 
 func (d *DistLayer) initIm2Row() {
