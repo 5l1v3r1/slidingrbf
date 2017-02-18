@@ -33,11 +33,9 @@ func NewLayer(c anyvec.Creator, inWidth, inHeight, inDepth, filterX, filterY, fi
 		Filters:      anydiff.NewVar(filters),
 	}
 	normalizer := 1 / (float64(filterX*filterY*inDepth) * 2)
-	scaleVec := c.MakeVector(filterCount)
-	scaleVec.AddScaler(c.MakeNumeric(1))
 	out := &rbfOutLayer{
 		Normalizer: normalizer,
-		Scalers:    anydiff.NewVar(scaleVec),
+		Scalers:    anydiff.NewVar(c.MakeVector(filterCount)),
 	}
 	return anynet.Net{distLayer, out}
 }
@@ -61,9 +59,9 @@ func deserializeRBFOutLayer(d []byte) (*rbfOutLayer, error) {
 
 func (r *rbfOutLayer) Apply(in anydiff.Res, n int) anydiff.Res {
 	c := in.Output().Creator()
-	sq := anydiff.Pow(r.Scalers, c.MakeNumeric(-2))
-	sq = anydiff.Scale(sq, c.MakeNumeric(-r.Normalizer))
-	return anydiff.Exp(anydiff.ScaleRepeated(in, sq))
+	scalers := anydiff.Exp(r.Scalers)
+	scalers = anydiff.Scale(scalers, c.MakeNumeric(-r.Normalizer))
+	return anydiff.Exp(anydiff.ScaleRepeated(in, scalers))
 }
 
 func (r *rbfOutLayer) Parameters() []*anydiff.Var {
