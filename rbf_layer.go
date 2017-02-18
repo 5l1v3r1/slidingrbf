@@ -1,8 +1,6 @@
 package slidingrbf
 
 import (
-	"math"
-
 	"github.com/unixpickle/anydiff"
 	"github.com/unixpickle/anynet"
 	"github.com/unixpickle/anyvec"
@@ -34,33 +32,37 @@ func NewLayer(c anyvec.Creator, inWidth, inHeight, inDepth, filterX, filterY, fi
 		StrideY:      strideY,
 		Filters:      anydiff.NewVar(filters),
 	}
-	scale := math.Sqrt(float64(filterX*filterY*inDepth) * 2)
+	normalizer := 1 / (float64(filterX*filterY*inDepth) * 2)
 	scaleVec := c.MakeVector(filterCount)
-	scaleVec.AddScaler(c.MakeNumeric(scale))
+	scaleVec.AddScaler(c.MakeNumeric(1))
 	out := &rbfOutLayer{
-		Scalers: anydiff.NewVar(scaleVec),
+		Normalizer: normalizer,
+		Scalers:    anydiff.NewVar(scaleVec),
 	}
 	return anynet.Net{distLayer, out}
 }
 
 type rbfOutLayer struct {
-	Scalers *anydiff.Var
+	Normalizer float64
+	Scalers    *anydiff.Var
 }
 
 func deserializeRBFOutLayer(d []byte) (*rbfOutLayer, error) {
-	var s anyvecsave.S
-	if err := serializer.DeserializeAny(d, &s); err != nil {
+	var s *anyvecsave.S
+	var n serializer.Float64
+	if err := serializer.DeserializeAny(d, &s, &n); err != nil {
 		return nil, err
 	}
 	return &rbfOutLayer{
-		Scalers: anydiff.NewVar(s.Vector),
+		Scalers:    anydiff.NewVar(s.Vector),
+		Normalizer: float64(n),
 	}, nil
 }
 
 func (r *rbfOutLayer) Apply(in anydiff.Res, n int) anydiff.Res {
 	c := in.Output().Creator()
 	sq := anydiff.Pow(r.Scalers, c.MakeNumeric(-2))
-	sq = anydiff.Scale(sq, c.MakeNumeric(-1))
+	sq = anydiff.Scale(sq, c.MakeNumeric(-r.Normalizer))
 	return anydiff.Exp(anydiff.ScaleRepeated(in, sq))
 }
 
@@ -73,5 +75,8 @@ func (r *rbfOutLayer) SerializerType() string {
 }
 
 func (r *rbfOutLayer) Serialize() ([]byte, error) {
-	return serializer.SerializeAny(&anyvecsave.S{Vector: r.Scalers.Vector})
+	return serializer.SerializeAny(
+		&anyvecsave.S{Vector: r.Scalers.Vector},
+		serializer.Float64(r.Normalizer),
+	)
 }
