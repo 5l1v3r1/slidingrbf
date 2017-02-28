@@ -29,11 +29,13 @@ func main() {
 	var netPath string
 	var stepSize float64
 	var batchSize int
+	var successRate bool
 
 	flag.StringVar(&sampleDir, "samples", "", "cifar-10 binary batch dir")
 	flag.StringVar(&netPath, "net", "out_net", "network file")
 	flag.Float64Var(&stepSize, "step", 0.001, "SGD step size")
 	flag.IntVar(&batchSize, "batch", 64, "SGD batch size")
+	flag.BoolVar(&successRate, "successrate", false, "print success rate")
 	flag.Parse()
 
 	if sampleDir == "" {
@@ -63,6 +65,11 @@ func main() {
 		}
 	} else {
 		log.Println("Using existing network.")
+	}
+
+	if successRate {
+		log.Println("Computing success rate...")
+		printSuccessRate(net, validation, batchSize)
 	}
 
 	log.Println("Setting up...")
@@ -101,4 +108,28 @@ func main() {
 	if err := serializer.SaveAny(netPath, net); err != nil {
 		essentials.Die(err)
 	}
+}
+
+func printSuccessRate(net anynet.Net, samples anysgd.SampleList, batch int) {
+	ones := anyvec32.MakeVector(batch)
+	ones.AddScaler(float32(1))
+
+	fetcher := &anyff.Trainer{}
+	correct := 0.0
+	total := 0.0
+	for i := 0; i+batch <= samples.Len(); i += batch {
+		b, _ := fetcher.Fetch(samples.Slice(i, i+batch))
+		ins := b.(*anyff.Batch).Inputs
+		desired := b.(*anyff.Batch).Outputs.Output()
+		outs := net.Apply(ins, batch).Output()
+
+		mapper := anyvec.MapMax(outs, 10)
+		maxes := anyvec32.MakeVector(desired.Len())
+		mapper.MapTranspose(ones, maxes)
+
+		correct += float64(maxes.Dot(desired).(float32))
+		total += float64(batch)
+	}
+
+	log.Printf("Got %.3f%%", 100*correct/total)
 }
