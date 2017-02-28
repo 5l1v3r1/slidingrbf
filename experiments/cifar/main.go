@@ -99,7 +99,7 @@ func main() {
 			log.Printf("iter %d: cost=%v validation=%v", iterNum, t.LastCost, vCost)
 			iterNum++
 		},
-		BatchSize: 200,
+		BatchSize: batchSize,
 	}
 
 	log.Println("Press ctrl+c once to stop...")
