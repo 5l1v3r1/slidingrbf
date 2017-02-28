@@ -90,7 +90,7 @@ func main() {
 		Gradienter:  t,
 		Transformer: &anysgd.Adam{},
 		Samples:     training,
-		Rater:       anysgd.ConstRater(0.001),
+		Rater:       anysgd.ConstRater(stepSize),
 		StatusFunc: func(b anysgd.Batch) {
 			anysgd.Shuffle(validation)
 			batch, _ := t.Fetch(validation.Slice(0, batchSize))
