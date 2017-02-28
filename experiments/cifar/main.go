@@ -69,7 +69,8 @@ func main() {
 
 	if successRate {
 		log.Println("Computing success rate...")
-		printSuccessRate(net, validation, batchSize)
+		rate := validation.Accuracy(net, batchSize).(float32)
+		log.Printf("Got %.3f%%", 100*rate)
 	}
 
 	log.Println("Setting up...")
@@ -108,28 +109,4 @@ func main() {
 	if err := serializer.SaveAny(netPath, net); err != nil {
 		essentials.Die(err)
 	}
-}
-
-func printSuccessRate(net anynet.Net, samples anysgd.SampleList, batch int) {
-	ones := anyvec32.MakeVector(batch)
-	ones.AddScaler(float32(1))
-
-	fetcher := &anyff.Trainer{}
-	correct := 0.0
-	total := 0.0
-	for i := 0; i+batch <= samples.Len(); i += batch {
-		b, _ := fetcher.Fetch(samples.Slice(i, i+batch))
-		ins := b.(*anyff.Batch).Inputs
-		desired := b.(*anyff.Batch).Outputs.Output()
-		outs := net.Apply(ins, batch).Output()
-
-		mapper := anyvec.MapMax(outs, 10)
-		maxes := anyvec32.MakeVector(desired.Len())
-		mapper.MapTranspose(ones, maxes)
-
-		correct += float64(maxes.Dot(desired).(float32))
-		total += float64(batch)
-	}
-
-	log.Printf("Got %.3f%%", 100*correct/total)
 }
