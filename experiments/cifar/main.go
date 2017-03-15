@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/unixpickle/anynet"
-	"github.com/unixpickle/anynet/anyconv"
 	"github.com/unixpickle/anynet/anyff"
 	"github.com/unixpickle/anynet/anysgd"
 	"github.com/unixpickle/anyvec"
@@ -53,16 +52,22 @@ func main() {
 	var net anynet.Net
 	if err := serializer.LoadAny(netPath, &net); err != nil {
 		log.Println("Creating new network...")
-		net = anynet.Net{
-			slidingrbf.NewLayer(Creator, 32, 32, 3, 3, 3, 8, 2, 2),
-			anyconv.NewBatchNorm(Creator, 8),
-			slidingrbf.NewLayer(Creator, 15, 15, 8, 4, 4, 8, 1, 1),
-			anyconv.NewBatchNorm(Creator, 8),
-			slidingrbf.NewLayer(Creator, 12, 12, 8, 3, 3, 16, 2, 2),
-			anyconv.NewBatchNorm(Creator, 16),
-			anynet.NewFC(Creator, 16*5*5, 10),
-			anynet.LogSoftmax,
+		markup := `
+			Input(w=32, h=32, d=3)
+			SlidingRBF(w=3, h=3, n=8, sx=2, sy=2)
+			BatchNorm
+			SlidingRBF(w=4, h=4, n=8)
+			BatchNorm
+			SlidingRBF(w=3, h=3, n=16, sx=2, sy=2)
+			BatchNorm
+			FC(out=10)
+			Softmax
+		`
+		layer, err := slidingrbf.FromMarkup(Creator, markup)
+		if err != nil {
+			essentials.Die(err)
 		}
+		net = layer.(anynet.Net)
 	} else {
 		log.Println("Using existing network.")
 	}
