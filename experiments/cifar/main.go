@@ -48,6 +48,7 @@ func main() {
 
 	training := cifar.NewSampleListAll(Creator, lists[:5]...)
 	validation := cifar.NewSampleListAll(Creator, lists[5])
+	training.Augment = true
 
 	var net anynet.Net
 	if err := serializer.LoadAny(netPath, &net); err != nil {
